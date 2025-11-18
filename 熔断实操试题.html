@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分布式系统熔断失效实操试题</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <style>
+        /* 隐藏滚动条但保持功能 */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+        html {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+    <style>
+        * {
+            margin: 0;
+            /* padding: 0; */
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, rgb(1,112,246) 0%, rgb(0,82,204) 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            max-width: 1400px;
+            width: 95%;
+            max-height: 95vh;
+            overflow: hidden;
+        }
+
+        /* 登录页面样式 */
+        .login-container {
+            padding: 60px 40px;
+            text-align: center;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            min-height: 500px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .login-container.hidden {
+            display: none;
+        }
+
+        .main-container.hidden {
+            display: none;
+        }
+
+        .main-container:not(.hidden) {
+            display: flex;
+        }
+
+        .login-title {
+            font-size: 32px;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .login-subtitle {
+            font-size: 16px;
+            color: #7f8c8d;
+            margin-bottom: 40px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+            text-align: left;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #34495e;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: rgb(1,112,246);
+            box-shadow: 0 0 0 3px rgba(1, 112, 246, 0.1);
+        }
+
+        .login-btn {
+            background: linear-gradient(135deg, rgb(1,112,246) 0%, rgb(0,82,204) 100%);
+            color: white;
+            border: none;
+            padding: 14px 40px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(1, 112, 246, 0.3);
+        }
+
+        .error-message {
+            color: #e74c3c;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        /* 验证码样式 */
+        .captcha-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .captcha-input {
+            flex: 1;
+        }
+
+        .captcha-canvas {
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .captcha-canvas:hover {
+            border-color: rgb(1,112,246);
+        }
+
+        .captcha-refresh {
+            background: #f8f9fa;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .captcha-refresh:hover {
+            border-color: rgb(1,112,246);
+            color: rgb(1,112,246);
+        }
+
+        /* 主页面样式 */
+        .main-container {
+            display: none;
+            /* height: 90vh; */
+            overflow: hidden;
+            flex-direction: column;
+        }
+
+        .main-container:not(.hidden) {
+            display: flex;
+        }
+
+        .header {
+            background: linear-gradient(135deg, rgb(1,112,246) 0%, rgb(0,82,204) 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 16px;
+        }
+
+        .time-display {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 500;
+        }
+
+        .header h1 {
+            font-size: 24px;
+        }
+
+        .user-info {
+            font-size: 16px;
+        }
+
+        .content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 700px;
+            background: #f8f9fa;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 1px solid #e9ecef;
+        }
+
+        .main-content {
+            flex: 1.5;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .section {
+            /* margin-bottom: 30px; */
+            width: 500px;
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 20px;
+            border-bottom: 2px solid rgb(1,112,246);
+            padding-bottom: 8px;
+        }
+
+        .section h3 {
+            color: #34495e;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .section p, .section li {
+            color: #555;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 0;
+            border-bottom: 2px solid #e9ecef;
+            background: #f8f9fa;
+            border-radius: 8px 8px 0 0;
+            padding: 8px 8px 0 8px;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            color: #2c3e50;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            font-weight: 500;
+        }
+
+        .tab.active {
+            color: #ffffff;
+            background: rgb(1,112,246);
+            border-bottom-color: rgb(0,82,204);
+            border-radius: 8px 8px 0 0;
+        }
+
+        .tab:hover {
+            color: rgb(1,112,246);
+            background: rgba(1, 112, 246, 0.1);
+        }
+
+        .tab-content {
+            display: none;
+            background: white;
+            border: 2px solid #e9ecef;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            padding: 20px;
+            margin-top: -2px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .config-textarea {
+            width: 100%;
+            height: 400px;
+            padding: 15px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            resize: vertical;
+            line-height: 1.5;
+        }
+
+        .config-textarea:focus {
+            outline: none;
+            border-color: rgb(1,112,246);
+            box-shadow: 0 0 0 3px rgba(1, 112, 246, 0.1);
+        }
+
+        .submit-btn {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            border: none;
+            padding: 16px 50px;
+            font-size: 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            margin: 20px 10px;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(40, 167, 69, 0.3);
+        }
+
+        .submit-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .footer {
+            background: transparent;
+            border-top: 1px solid #e9ecef;
+            padding: 10px 30px;
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0;
+        }
+
+        .result-container {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .result-container.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+
+        .result-container.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+
+        .score {
+            font-size: 48px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .score.high {
+            color: #28a745;
+        }
+
+        .score.medium {
+            color: #ffc107;
+        }
+
+        .score.low {
+            color: #dc3545;
+        }
+
+        .feedback-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        .feedback-item.correct {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+
+        .feedback-item.incorrect {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
+
+        .feedback-item strong {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 16px;
+        }
+
+        .points-display {
+            color: #666;
+            font-weight: normal;
+            font-size: 14px;
+        }
+
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .warning-box h4 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+
+        .warning-box p {
+            color: #856404;
+            margin: 0;
+        }
+
+        /* 防止复制和开发者工具 */
+        .no-select {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 1400px) {
+            .sidebar {
+                width: 400px;
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .container {
+                width: 98%;
+                max-width: none;
+            }
+            .sidebar {
+                width: 350px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid #e9ecef;
+            }
+            
+            .container {
+                width: 100%;
+                max-width: none;
+                border-radius: 0;
+                max-height: 100vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 登录页面 -->
+    <div id="loginPage" class="login-container">
+        <h1 class="login-title">分布式系统熔断失效实操试题</h1>
+        <p class="login-subtitle">请输入您的信息开始考试</p>
+        
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">姓名：</label>
+                <input type="text" id="username" name="username" required placeholder="请输入您的姓名">
+            </div>
+            
+            <div class="form-group">
+                <label for="kaoshima">考试码：</label>
+                <input type="text" id="kaoshima" name="kaoshima" required placeholder="请输入考试码">
+            </div>
+            
+            <div class="form-group">
+                <label for="captcha">验证码：</label>
+                <div class="captcha-container">
+                    <input type="text" id="captcha" name="captcha" class="captcha-input" required placeholder="请输入验证码" maxlength="4">
+                    <canvas id="captchaCanvas" class="captcha-canvas" width="100" height="40"></canvas>
+                    <button type="button" id="refreshCaptcha" class="captcha-refresh">刷新</button>
+                </div>
+            </div>
+            
+            <button type="submit" class="login-btn">开始考试</button>
+            
+            <div id="loginError" class="error-message"></div>
+        </form>
+    </div>
+
+    <!-- 主页面 -->
+    <div id="mainPage" class="main-container hidden">
+        <div class="header">
+            <h1>分布式系统熔断失效实操试题</h1>
+            <div class="user-info">
+                <div>考生：<span id="displayUsername"></span></div>
+                <div class="time-display" id="timeDisplay"></div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="sidebar">
+                <div class="section">
+                    <h2>试题说明</h2>
+                    <p><strong>核心目标：</strong>基于「配置错误导致熔断不触发」场景，修正不合理的熔断配置。</p>
+                    
+                    <h3>场景背景</h3>
+                    <ul>
+                        <li>服务A调用服务B，服务B故障导致50%请求返回500错误</li>
+                        <li>熔断组件配置不合理，始终处于CLOSED状态</li>
+                        <li>需要修正配置，使50%错误率下能触发熔断</li>
+                    </ul>
+                    
+                    <h3>答题要求</h3>
+                    <ul>
+                        <li>选择一个熔断组件进行配置修正</li>
+                        <li>当失败率达到50%时，1分钟内触发熔断</li>
+                        <li>熔断后停止转发请求，避免故障蔓延</li>
+                        <li>配置需符合组件最佳实践</li>
+                    </ul>
+                    
+                    <div class="warning-box">
+                        <h4>⚠️ 注意事项</h4>
+                        <p>• 每次登录只能提交一次答案</p>
+                        <p>• 请仔细阅读配置要求</p>
+                        <p>• 提交后将显示详细评分</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="main-content">
+                <div class="section">
+                    <h2>组件选择与配置</h2>
+                    
+                    <div class="tabs">
+                        <button class="tab active" onclick="switchTab('resilience4j')">Resilience4j</button>
+                        <button class="tab" onclick="switchTab('sentinel')">Sentinel</button>
+                        <button class="tab" onclick="switchTab('hystrix')">Hystrix</button>
+                    </div>
+                    
+                    <!-- Resilience4j 配置 -->
+                    <div id="resilience4j" class="tab-content active">
+                        <h3>Resilience4j 配置</h3>
+                        <p>请修正以下配置，使其在50%错误率下触发熔断：</p>
+                        <textarea id="resilience4jConfig" class="config-textarea">resilience4j:
+  circuitbreaker:
+    instances:
+      serviceB:
+        failureRateThreshold: 80
+        timeoutDuration: 5000
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 5
+        slidingWindowType: COUNT_BASED
+        waitDurationInOpenState: 60s</textarea>
+                    </div>
+                    
+                    <!-- Sentinel 配置 -->
+                    <div id="sentinel" class="tab-content">
+                        <h3>Sentinel 配置</h3>
+                        <p>请修正以下JSON配置，使其在50%错误率下触发熔断：</p>
+                        <textarea id="sentinelConfig" class="config-textarea">{
+  "resource": "serviceB",
+  "grade": 1,
+  "count": 0.8,
+  "timeWindow": 60,
+  "minRequestAmount": 5,
+  "slowRatioThreshold": 0.6,
+  "rtSlowRequestThreshold": 2000,
+  "maxQueueingTimeMs": 5000
+}</textarea>
+                    </div>
+                    
+                    <!-- Hystrix 配置 -->
+                    <div id="hystrix" class="tab-content">
+                        <h3>Hystrix 配置</h3>
+                        <p>请修正以下配置，使其在50%错误率下触发熔断：</p>
+                        <textarea id="hystrixConfig" class="config-textarea">hystrix:
+  command:
+    serviceB:
+      execution:
+        isolation:
+          thread:
+            timeoutInMilliseconds: 5000
+      circuitBreaker:
+        errorThresholdPercentage: 80
+        requestVolumeThreshold: 10
+        sleepWindowInMilliseconds: 5000
+        forceOpen: false
+        forceClosed: false
+      metrics:
+        rollingStats:
+          timeInMilliseconds: 10000
+          numBuckets: 10</textarea>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <button id="submitBtn" class="submit-btn" onclick="submitAnswer()">提交答案</button>
+            <button id="reopenResultBtn" class="submit-btn" style="display: none; background: linear-gradient(135deg, rgb(1,112,246) 0%, rgb(0,82,204) 100%);" onclick="reopenResult()">重新查看得分</button>
+        </div>
+        
+        <div id="resultContainer" class="result-container" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; max-width: 600px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+            <div id="scoreDisplay" class="score"></div>
+            <div id="feedbackDetails"></div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let currentTab = 'resilience4j';
+        let hasSubmitted = false;
+        let currentUser = '';
+
+        // 防止开发者工具
+        document.addEventListener('keydown', function(e) {
+            // F12
+            if (e.keyCode === 123) {
+                e.preventDefault();
+                return false;
+            }
+            // Ctrl+Shift+I
+            if (e.ctrlKey && e.shiftKey && e.keyCode === 73) {
+                e.preventDefault();
+                return false;
+            }
+            // Ctrl+Shift+J
+            if (e.ctrlKey && e.shiftKey && e.keyCode === 74) {
+                e.preventDefault();
+                return false;
+            }
+            // Ctrl+Shift+C
+            if (e.ctrlKey && e.shiftKey && e.keyCode === 67) {
+                e.preventDefault();
+                return false;
+            }
+            // Ctrl+U
+            if (e.ctrlKey && e.keyCode === 85) {
+                e.preventDefault();
+                return false;
+            }
+            // F11 (全屏)
+            if (e.keyCode === 122) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // 检测开发者工具
+        let devtools = {
+            open: false,
+            orientation: null
+        };
+
+        // 检测开发者工具打开
+        const threshold = 160;
+        setInterval(function() {
+            if (window.outerHeight - window.innerHeight > threshold || 
+                window.outerWidth - window.innerWidth > threshold) {
+                if (!devtools.open) {
+                    devtools.open = true;
+
+                    // 关闭开发者工具
+                    document.body.innerHTML = '<div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: Arial; font-size: 24px; color: #333; text-align: center;"><div style="color: #dc3545; margin-bottom: 20px;">⚠️ 安全警告</div><div>开发者工具已被禁用</div><div style="font-size: 16px; color: #666; margin-top: 20px;">为了维护考试公平性，请勿尝试使用开发者工具</div></div>';
+ 
+                    // 跳转到空白页
+                    window.location.href = '警告：检测到开发者工具尝试打开！';
+                    
+                    // 显示警告弹窗
+                    // setTimeout(function() {
+                    //     alert('⚠️ 警告：检测到开发者工具尝试打开！\n\n为了考试公平性，开发者工具已被禁用。\n请勿尝试绕过考试系统的安全防护。');
+                    // }, 3000);
+
+                }
+            } else {
+                devtools.open = false;
+            }
+        }, 500);
+
+        // 禁用右键菜单
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+        });
+
+        // 禁用选择
+        document.addEventListener('selectstart', function(e) {
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // 禁用拖拽
+        document.addEventListener('dragstart', function(e) {
+            e.preventDefault();
+            return false;
+        });
+
+        // 检测控制台输出
+        const console = {
+            log: function() {},
+            warn: function() {},
+            error: function() {},
+            info: function() {},
+            debug: function() {}
+        };
+
+        // 禁用F1帮助
+        document.addEventListener('help', function(e) {
+            e.preventDefault();
+            return false;
+        });
+
+        // 禁用Ctrl+P打印
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.keyCode === 80) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // 防止右键菜单
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+        });
+
+        // 验证码相关变量
+        let currentCaptcha = '';
+
+        // 生成随机验证码
+        function generateCaptcha() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let captcha = '';
+            for (let i = 0; i < 4; i++) {
+                captcha += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return captcha;
+        }
+
+        // 绘制验证码
+        function drawCaptcha() {
+            const canvas = document.getElementById('captchaCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // 清空画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 生成新的验证码
+            currentCaptcha = generateCaptcha();
+            
+            // 设置背景
+            ctx.fillStyle = '#f8f9fa';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制干扰线
+            for (let i = 0; i < 4; i++) {
+                ctx.strokeStyle = `rgba(${Math.random() * 255}, ${Math.random() * 255}, ${Math.random() * 255}, 0.3)`;
+                ctx.beginPath();
+                ctx.moveTo(Math.random() * canvas.width, Math.random() * canvas.height);
+                ctx.lineTo(Math.random() * canvas.width, Math.random() * canvas.height);
+                ctx.stroke();
+            }
+            
+            // 绘制干扰点
+            for (let i = 0; i < 30; i++) {
+                ctx.fillStyle = `rgba(${Math.random() * 255}, ${Math.random() * 255}, ${Math.random() * 255}, 0.5)`;
+                ctx.beginPath();
+                ctx.arc(Math.random() * canvas.width, Math.random() * canvas.height, 1, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+            
+            // 绘制验证码文字
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            for (let i = 0; i < currentCaptcha.length; i++) {
+                const x = 20 + i * 20;
+                const y = 20;
+                const angle = (Math.random() - 0.5) * 0.4;
+                
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(angle);
+                
+                // 随机颜色
+                const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6'];
+                ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+                
+                ctx.fillText(currentCaptcha[i], 0, 0);
+                ctx.restore();
+            }
+        }
+
+        // 验证验证码
+        function validateCaptcha(input) {
+            return input.toUpperCase() === currentCaptcha;
+        }
+
+        // 初始化验证码
+        function initCaptcha() {
+            drawCaptcha();
+            
+            // 刷新验证码按钮事件
+            document.getElementById('refreshCaptcha').addEventListener('click', function() {
+                drawCaptcha();
+                document.getElementById('captcha').value = '';
+                document.getElementById('captcha').focus();
+            });
+            
+            // 点击验证码图片刷新
+            document.getElementById('captchaCanvas').addEventListener('click', function() {
+                drawCaptcha();
+                document.getElementById('captcha').value = '';
+                document.getElementById('captcha').focus();
+            });
+        }
+
+        // 登录表单处理
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const kaoshima = document.getElementById('kaoshima').value.trim();
+            const captcha = document.getElementById('captcha').value.trim();
+            const errorDiv = document.getElementById('loginError');
+            
+            // 清空错误信息
+            errorDiv.textContent = '';
+            
+            // 姓名校验
+            if (!username) {
+                errorDiv.textContent = '请输入姓名';
+                return;
+            }
+            
+            // 考试码校验
+            if (kaoshima !== '6666') {
+                errorDiv.textContent = '考试码错误，请输入正确的考试码';
+                return;
+            }
+            
+            // 验证码校验
+            if (!captcha) {
+                errorDiv.textContent = '请输入验证码';
+                return;
+            }
+            
+            if (!validateCaptcha(captcha)) {
+                errorDiv.textContent = '验证码错误，请重新输入';
+                drawCaptcha(); // 刷新验证码
+                document.getElementById('captcha').value = '';
+                document.getElementById('captcha').focus();
+                return;
+            }
+            
+            // 登录成功
+            currentUser = username;
+            document.getElementById('displayUsername').textContent = username;
+            document.getElementById('loginPage').classList.add('hidden');
+            document.getElementById('mainPage').classList.remove('hidden');
+        });
+
+        // Tab切换功能
+        function switchTab(tabName) {
+            if (hasSubmitted) {
+                alert('已提交答案，无法切换组件');
+                return;
+            }
+            
+            currentTab = tabName;
+            
+            // 更新tab样式
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // 更新内容显示
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        // 提交答案
+        function submitAnswer() {
+            if (hasSubmitted) {
+                alert('您已经提交过答案了');
+                return;
+            }
+            
+            let config = '';
+            let score = 0;
+            let feedback = [];
+            
+            switch (currentTab) {
+                case 'resilience4j':
+                    config = document.getElementById('resilience4jConfig').value;
+                    const resilience4jResult = validateResilience4j(config);
+                    score = resilience4jResult.score;
+                    feedback = resilience4jResult.feedback;
+                    break;
+                    
+                case 'sentinel':
+                    config = document.getElementById('sentinelConfig').value;
+                    const sentinelResult = validateSentinel(config);
+                    score = sentinelResult.score;
+                    feedback = sentinelResult.feedback;
+                    break;
+                    
+                case 'hystrix':
+                    config = document.getElementById('hystrixConfig').value;
+                    const hystrixResult = validateHystrix(config);
+                    score = hystrixResult.score;
+                    feedback = hystrixResult.feedback;
+                    break;
+            }
+            
+            // 显示结果
+            displayResult(score, feedback);
+            hasSubmitted = true;
+            document.getElementById('submitBtn').disabled = true;
+        }
+
+        // Resilience4j 配置校验
+        function validateResilience4j(config) {
+            let score = 0;
+            let feedback = [];
+            
+            // 提取配置值
+            const failureRateMatch = config.match(/failureRateThreshold:\s*(\d+)/);
+            const timeoutMatch = config.match(/timeoutDuration:\s*(\d+)/);
+            const windowSizeMatch = config.match(/slidingWindowSize:\s*(\d+)/);
+            const minCallsMatch = config.match(/minimumNumberOfCalls:\s*(\d+)/);
+            const permittedCallsMatch = config.match(/permittedNumberOfCallsInHalfOpenState:\s*(\d+)/);
+            
+            // 校验 failureRateThreshold (30分)
+            if (failureRateMatch) {
+                const value = parseInt(failureRateMatch[1]);
+                if (value <= 50) {
+                    score += 30;
+                    feedback.push({
+                        item: 'failureRateThreshold',
+                        points: 30,
+                        totalPoints: 30,
+                        status: 'correct',
+                        message: `✓ 正确：${value}% ≤ 50%，能在50%错误率时触发熔断`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'failureRateThreshold',
+                        points: 0,
+                        totalPoints: 30,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value}% > 50%，无法在50%错误率时触发熔断`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'failureRateThreshold',
+                    points: 0,
+                    totalPoints: 30,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到failureRateThreshold配置'
+                });
+            }
+            
+            // 校验 timeoutDuration (25分)
+            if (timeoutMatch) {
+                const value = parseInt(timeoutMatch[1]);
+                if (value <= 1000) {
+                    score += 25;
+                    feedback.push({
+                        item: 'timeoutDuration',
+                        points: 25,
+                        totalPoints: 25,
+                        status: 'correct',
+                        message: `✓ 正确：${value}ms ≤ 1000ms，超时时间合理`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'timeoutDuration',
+                        points: 0,
+                        totalPoints: 25,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value}ms > 1000ms，超时时间过长`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'timeoutDuration',
+                    points: 0,
+                    totalPoints: 25,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到timeoutDuration配置'
+                });
+            }
+            
+            // 校验 slidingWindowSize (20分)
+            if (windowSizeMatch) {
+                const value = parseInt(windowSizeMatch[1]);
+                if (value >= 20) {
+                    score += 20;
+                    feedback.push({
+                        item: 'slidingWindowSize',
+                        points: 20,
+                        totalPoints: 20,
+                        status: 'correct',
+                        message: `✓ 正确：${value} ≥ 20，滑动窗口大小合理`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'slidingWindowSize',
+                        points: 0,
+                        totalPoints: 20,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value} < 20，滑动窗口过小影响统计稳定性`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'slidingWindowSize',
+                    points: 0,
+                    totalPoints: 20,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到slidingWindowSize配置'
+                });
+            }
+            
+            // 校验 minimumNumberOfCalls (15分)
+            if (minCallsMatch) {
+                const value = parseInt(minCallsMatch[1]);
+                if (value >= 10) {
+                    score += 15;
+                    feedback.push({
+                        item: 'minimumNumberOfCalls',
+                        points: 15,
+                        totalPoints: 15,
+                        status: 'correct',
+                        message: `✓ 正确：${value} ≥ 10，最小请求数合理`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'minimumNumberOfCalls',
+                        points: 0,
+                        totalPoints: 15,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value} < 10，最小请求数过少`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'minimumNumberOfCalls',
+                    points: 0,
+                    totalPoints: 15,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到minimumNumberOfCalls配置'
+                });
+            }
+            
+            // 校验 permittedNumberOfCallsInHalfOpenState (10分)
+            if (permittedCallsMatch) {
+                const value = parseInt(permittedCallsMatch[1]);
+                if (value <= 2) {
+                    score += 10;
+                    feedback.push({
+                        item: 'permittedNumberOfCallsInHalfOpenState',
+                        points: 10,
+                        totalPoints: 10,
+                        status: 'correct',
+                        message: `✓ 正确：${value} ≤ 2，半开状态请求数合理`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'permittedNumberOfCallsInHalfOpenState',
+                        points: 0,
+                        totalPoints: 10,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value} > 2，半开状态请求数过多`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'permittedNumberOfCallsInHalfOpenState',
+                    points: 0,
+                    totalPoints: 10,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到permittedNumberOfCallsInHalfOpenState配置'
+                });
+            }
+            
+            return { score, feedback };
+        }
+
+        // Sentinel 配置校验
+        function validateSentinel(config) {
+            let score = 0;
+            let feedback = [];
+            
+            let jsonData = {};
+            try {
+                jsonData = JSON.parse(config);
+            } catch (e) {
+                feedback.push({
+                    item: 'JSON格式',
+                    points: 0,
+                    totalPoints: 100,
+                    status: 'incorrect',
+                    message: '✗ 错误：JSON格式不正确，请检查语法'
+                });
+                return { score: 0, feedback };
+            }
+            
+            // 校验 count (35分)
+            if (jsonData.count !== undefined) {
+                const value = parseFloat(jsonData.count);
+                if (value <= 0.4) {
+                    score += 35;
+                    feedback.push({
+                        item: 'count (异常比例阈值)',
+                        points: 35,
+                        totalPoints: 35,
+                        status: 'correct',
+                        message: `✓ 正确：${value} ≤ 0.4，能在50%错误率时触发熔断`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'count (异常比例阈值)',
+                        points: 0,
+                        totalPoints: 35,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value} > 0.4，无法在50%错误率时触发熔断`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'count (异常比例阈值)',
+                    points: 0,
+                    totalPoints: 35,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到count配置'
+                });
+            }
+            
+            // 校验 rtSlowRequestThreshold (25分)
+            if (jsonData.rtSlowRequestThreshold !== undefined) {
+                const value = parseInt(jsonData.rtSlowRequestThreshold);
+                if (value <= 1000) {
+                    score += 25;
+                    feedback.push({
+                        item: 'rtSlowRequestThreshold (慢调用阈值)',
+                        points: 25,
+                        totalPoints: 25,
+                        status: 'correct',
+                        message: `✓ 正确：${value}ms ≤ 1000ms，慢调用阈值合理`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'rtSlowRequestThreshold (慢调用阈值)',
+                        points: 0,
+                        totalPoints: 25,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value}ms > 1000ms，慢调用阈值过长`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'rtSlowRequestThreshold (慢调用阈值)',
+                    points: 0,
+                    totalPoints: 25,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到rtSlowRequestThreshold配置'
+                });
+            }
+            
+            // 校验 slowRatioThreshold (20分)
+            if (jsonData.slowRatioThreshold !== undefined) {
+                const value = parseFloat(jsonData.slowRatioThreshold);
+                if (value <= 0.3) {
+                    score += 20;
+                    feedback.push({
+                        item: 'slowRatioThreshold (慢调用比例阈值)',
+                        points: 20,
+                        totalPoints: 20,
+                        status: 'correct',
+                        message: `✓ 正确：${value} ≤ 0.3，慢调用比例阈值合理`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'slowRatioThreshold (慢调用比例阈值)',
+                        points: 0,
+                        totalPoints: 20,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value} > 0.3，慢调用比例阈值过高`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'slowRatioThreshold (慢调用比例阈值)',
+                    points: 0,
+                    totalPoints: 20,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到slowRatioThreshold配置'
+                });
+            }
+            
+            // 校验 minRequestAmount (20分)
+            if (jsonData.minRequestAmount !== undefined) {
+                const value = parseInt(jsonData.minRequestAmount);
+                if (value >= 15) {
+                    score += 20;
+                    feedback.push({
+                        item: 'minRequestAmount (最小请求数)',
+                        points: 20,
+                        totalPoints: 20,
+                        status: 'correct',
+                        message: `✓ 正确：${value} ≥ 15，最小请求数合理`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'minRequestAmount (最小请求数)',
+                        points: 0,
+                        totalPoints: 20,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value} < 15，最小请求数过少`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'minRequestAmount (最小请求数)',
+                    points: 0,
+                    totalPoints: 20,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到minRequestAmount配置'
+                });
+            }
+            
+            return { score, feedback };
+        }
+
+        // Hystrix 配置校验
+        function validateHystrix(config) {
+            let score = 0;
+            let feedback = [];
+            
+            // 提取配置值
+            const errorThresholdMatch = config.match(/errorThresholdPercentage:\s*(\d+)/);
+            const timeoutMatch = config.match(/timeoutInMilliseconds:\s*(\d+)/);
+            const timeWindowMatch = config.match(/timeInMilliseconds:\s*(\d+)/);
+            const requestVolumeMatch = config.match(/requestVolumeThreshold:\s*(\d+)/);
+            const numBucketsMatch = config.match(/numBuckets:\s*(\d+)/);
+            
+            // 校验 errorThresholdPercentage (30分)
+            if (errorThresholdMatch) {
+                const value = parseInt(errorThresholdMatch[1]);
+                if (value <= 50) {
+                    score += 30;
+                    feedback.push({
+                        item: 'errorThresholdPercentage',
+                        points: 30,
+                        totalPoints: 30,
+                        status: 'correct',
+                        message: `✓ 正确：${value}% ≤ 50%，能在50%错误率时触发熔断`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'errorThresholdPercentage',
+                        points: 0,
+                        totalPoints: 30,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value}% > 50%，无法在50%错误率时触发熔断`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'errorThresholdPercentage',
+                    points: 0,
+                    totalPoints: 30,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到errorThresholdPercentage配置'
+                });
+            }
+            
+            // 校验 timeoutInMilliseconds (25分)
+            if (timeoutMatch) {
+                const value = parseInt(timeoutMatch[1]);
+                if (value <= 1000) {
+                    score += 25;
+                    feedback.push({
+                        item: 'timeoutInMilliseconds',
+                        points: 25,
+                        totalPoints: 25,
+                        status: 'correct',
+                        message: `✓ 正确：${value}ms ≤ 1000ms，超时时间合理`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'timeoutInMilliseconds',
+                        points: 0,
+                        totalPoints: 25,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value}ms > 1000ms，超时时间过长`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'timeoutInMilliseconds',
+                    points: 0,
+                    totalPoints: 25,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到timeoutInMilliseconds配置'
+                });
+            }
+            
+            // 校验 timeInMilliseconds (20分)
+            if (timeWindowMatch) {
+                const value = parseInt(timeWindowMatch[1]);
+                if (value >= 30000) {
+                    score += 20;
+                    feedback.push({
+                        item: 'timeInMilliseconds (滑动窗口时长)',
+                        points: 20,
+                        totalPoints: 20,
+                        status: 'correct',
+                        message: `✓ 正确：${value}ms ≥ 30000ms，滑动窗口时长合理`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'timeInMilliseconds (滑动窗口时长)',
+                        points: 0,
+                        totalPoints: 20,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value}ms < 30000ms，滑动窗口时长过短`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'timeInMilliseconds (滑动窗口时长)',
+                    points: 0,
+                    totalPoints: 20,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到timeInMilliseconds配置'
+                });
+            }
+            
+            // 校验 requestVolumeThreshold (15分)
+            if (requestVolumeMatch) {
+                const value = parseInt(requestVolumeMatch[1]);
+                if (value >= 15) {
+                    score += 15;
+                    feedback.push({
+                        item: 'requestVolumeThreshold',
+                        points: 15,
+                        totalPoints: 15,
+                        status: 'correct',
+                        message: `✓ 正确：${value} ≥ 15，最小请求量合理`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'requestVolumeThreshold',
+                        points: 0,
+                        totalPoints: 15,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value} < 15，最小请求量过少`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'requestVolumeThreshold',
+                    points: 0,
+                    totalPoints: 15,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到requestVolumeThreshold配置'
+                });
+            }
+            
+            // 校验 numBuckets (10分)
+            if (numBucketsMatch) {
+                const value = parseInt(numBucketsMatch[1]);
+                if (value <= 5) {
+                    score += 10;
+                    feedback.push({
+                        item: 'numBuckets (桶数量)',
+                        points: 10,
+                        totalPoints: 10,
+                        status: 'correct',
+                        message: `✓ 正确：${value} ≤ 5，桶数量合理`
+                    });
+                } else {
+                    feedback.push({
+                        item: 'numBuckets (桶数量)',
+                        points: 0,
+                        totalPoints: 10,
+                        status: 'incorrect',
+                        message: `✗ 错误：${value} > 5，桶数量过多`
+                    });
+                }
+            } else {
+                feedback.push({
+                    item: 'numBuckets (桶数量)',
+                    points: 0,
+                    totalPoints: 10,
+                    status: 'incorrect',
+                    message: '✗ 错误：未找到numBuckets配置'
+                });
+            }
+            
+            return { score, feedback };
+        }
+
+        // 显示结果
+        function displayResult(score, feedback) {
+            const resultContainer = document.getElementById('resultContainer');
+            const scoreDisplay = document.getElementById('scoreDisplay');
+            const feedbackDetails = document.getElementById('feedbackDetails');
+            
+            // 设置分数样式
+            scoreDisplay.textContent = `${score} 分`;
+            scoreDisplay.className = 'score';
+            if (score >= 80) {
+                scoreDisplay.classList.add('high');
+                resultContainer.className = 'result-container success';
+            } else if (score >= 60) {
+                scoreDisplay.classList.add('medium');
+                resultContainer.className = 'result-container success';
+            } else {
+                scoreDisplay.classList.add('low');
+                resultContainer.className = 'result-container error';
+            }
+            
+            // 生成详细反馈
+            let feedbackHTML = `<h3>考生：${currentUser}</h3>`;
+            feedbackHTML += `<h3>组件：${currentTab.toUpperCase()}</h3>`;
+            feedbackHTML += '<h4>详细评分：</h4>';
+            
+            feedback.forEach(item => {
+                const className = item.status === 'correct' ? 'correct' : 'incorrect';
+                const pointsText = item.points !== undefined ? ` (${item.points}/${item.totalPoints}分)` : '';
+                feedbackHTML += `
+                    <div class="feedback-item ${className}">
+                        <strong>${item.item}${pointsText}</strong>
+                        ${item.message}
+                    </div>
+                `;
+            });
+            
+            feedbackDetails.innerHTML = feedbackHTML;
+            resultContainer.style.display = 'block';
+            
+            // 添加关闭按钮容器
+            const buttonContainer = document.createElement('div');
+            buttonContainer.style.cssText = 'text-align: center; margin-top: 20px;';
+            
+            // 添加关闭按钮
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = '关闭';
+            closeBtn.style.cssText = 'padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;';
+            closeBtn.onclick = function() {
+                resultContainer.style.display = 'none';
+                // 显示重新查看得分按钮
+                const reopenBtn = document.getElementById('reopenResultBtn');
+                if (reopenBtn) {
+                    reopenBtn.style.display = 'inline-block';
+                }
+            };
+            
+            buttonContainer.appendChild(closeBtn);
+            
+            feedbackDetails.appendChild(buttonContainer);
+            
+            // 处理重新打开按钮
+            const reopenBtn = document.getElementById('reopenResultBtn');
+            if (reopenBtn) {
+                reopenBtn.style.display = 'inline-block';
+            }
+        }
+
+        // 动态时间显示
+        function updateTime() {
+            const now = new Date();
+            const timeString = now.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            const timeDisplay = document.getElementById('timeDisplay');
+            if (timeDisplay) {
+                timeDisplay.textContent = timeString;
+            }
+        }
+
+        // 重新查看得分功能
+        function reopenResult() {
+            const resultContainer = document.getElementById('resultContainer');
+            const reopenBtn = document.getElementById('reopenResultBtn');
+            
+            if (resultContainer) {
+                resultContainer.style.display = 'block';
+            }
+            if (reopenBtn) {
+                reopenBtn.style.display = 'none';
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化验证码
+            initCaptcha();
+            
+            // 启动时间更新
+            updateTime();
+            setInterval(updateTime, 1000);
+            
+            // 清空控制台历史
+            if (typeof console.clear === 'function') {
+                console.clear();
+            }
+        });
+
+
+        // 禁用页面缩放
+        document.addEventListener('wheel', function(e) {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                return false;
+            }
+        }, { passive: false });
+    </script>
+</body>
+</html>
