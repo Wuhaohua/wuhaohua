@@ -699,16 +699,8 @@
                 if (!devtools.open) {
                     devtools.open = true;
 
-                    // 关闭开发者工具
-                    document.body.innerHTML = '<div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: Arial; font-size: 24px; color: #333; text-align: center;"><div style="color: #dc3545; margin-bottom: 20px;">⚠️ 安全警告</div><div>开发者工具已被禁用</div><div style="font-size: 16px; color: #666; margin-top: 20px;">为了维护考试公平性，请勿尝试使用开发者工具</div></div>';
- 
-                    // 跳转到空白页
-                    window.location.href = '警告：检测到开发者工具尝试打开！';
-                    
-                    // 显示警告弹窗
-                    // setTimeout(function() {
-                    //     alert('⚠️ 警告：检测到开发者工具尝试打开！\n\n为了考试公平性，开发者工具已被禁用。\n请勿尝试绕过考试系统的安全防护。');
-                    // }, 3000);
+                    // 跳转到警告页面
+                    window.location.replace('warning.html');
 
                 }
             } else {
